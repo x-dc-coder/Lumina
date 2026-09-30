@@ -158,4 +158,3 @@ func TestInjectNavigateShim_SupportsAllRelativeFiles(t *testing.T) {
 		t.Fatal("navigate shim should not be restricted to html/mdx regex")
 	}
 }
-
