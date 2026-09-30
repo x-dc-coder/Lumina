@@ -63,6 +63,24 @@ describe('PreviewWorkbenchPage (S-01 & Q-01)', () => {
         created_at: '2026-09-20T00:00:00Z',
         updated_at: '2026-09-20T00:00:00Z',
       },
+      {
+        id: 'f-3',
+        session_id: 'sess-1',
+        filename: 'doc.lpw',
+        mime_type: 'application/vnd.lumina.preview+json',
+        size: 200,
+        created_at: '2026-09-20T00:00:00Z',
+        updated_at: '2026-09-20T00:00:00Z',
+      },
+      {
+        id: 'f-4',
+        session_id: 'sess-1',
+        filename: 'style.css',
+        mime_type: 'text/css',
+        size: 50,
+        created_at: '2026-09-20T00:00:00Z',
+        updated_at: '2026-09-20T00:00:00Z',
+      },
     ],
   }
 
@@ -137,4 +155,37 @@ describe('PreviewWorkbenchPage (S-01 & Q-01)', () => {
       replace: true,
     })
   })
+
+  it('Q-05: 接收来自 iframe 对非 html 格式文件（如 .lpw 或代码文件）的 lumina:navigate 导航联动', async () => {
+    const { container } = render(
+      <PreviewWorkbenchPage
+        sessionHash="hash-123"
+        requestedFile="index.html"
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTitle('index.html')).toBeDefined()
+    })
+
+    const iframe = container.querySelector('iframe')
+    expect(iframe).toBeTruthy()
+
+    // 模拟来自 iframe.contentWindow 对 style.css（非 HTML 代码文件）的内部导航
+    act(() => {
+      const messageEvent = new MessageEvent('message', {
+        data: { type: 'lumina:navigate', href: 'style.css' },
+        source: iframe?.contentWindow,
+        origin: 'null',
+      })
+      window.dispatchEvent(messageEvent)
+    })
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/preview/$sessionHash/$',
+      params: { sessionHash: 'hash-123', _splat: 'style.css' },
+      replace: true,
+    })
+  })
 })
+

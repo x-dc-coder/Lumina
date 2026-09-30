@@ -138,3 +138,24 @@ func TestRenderTSXVirtualHost_SecurityEscaping(t *testing.T) {
 		}
 	}
 }
+
+func TestInjectNavigateShim_SupportsAllRelativeFiles(t *testing.T) {
+	t.Parallel()
+	html := `<!DOCTYPE html><html><body><h1>Hello</h1></body></html>`
+	injected := injectNavigateShim(html)
+
+	if !strings.Contains(injected, `data-lumina-nav="1"`) {
+		t.Fatal("navigate shim not injected")
+	}
+	if !strings.Contains(injected, `parent.postMessage({ type: "lumina:navigate", href: href }, "*")`) {
+		t.Fatal("navigate shim missing postMessage")
+	}
+	if !strings.Contains(injected, `e.preventDefault()`) {
+		t.Fatal("navigate shim must call e.preventDefault() to prevent sandbox navigation and downloading")
+	}
+	// 验证不再限制为 html/mdx 等狭窄正则
+	if strings.Contains(injected, `html|htm|md|mdx`) {
+		t.Fatal("navigate shim should not be restricted to html/mdx regex")
+	}
+}
+

@@ -1,17 +1,18 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ShowcaseShell } from './showcase-shell'
 
 const authState = { isAuthenticated: false }
+const mockNavigate = vi.fn()
 
 vi.mock('#/hooks/useAuth', () => ({
   useAuth: () => ({ isAuthenticated: authState.isAuthenticated }),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => mockNavigate,
 }))
 
 vi.mock('#/hooks/usePages', () => ({
@@ -195,5 +196,23 @@ describe('ShowcaseShell UI', () => {
     expect(card?.classList.contains('slide-in-from-top-2')).toBe(true)
     expect(card?.classList.contains('fade-in')).toBe(true)
     expect(card?.classList.contains('zoom-in-95')).toBe(false)
+  })
+
+  it('Q-05: responds to lumina:navigate for non-html files (e.g., style.css)', () => {
+    renderShell(true)
+
+    act(() => {
+      const messageEvent = new MessageEvent('message', {
+        data: { type: 'lumina:navigate', href: 'style.css' },
+        origin: 'null',
+      })
+      window.dispatchEvent(messageEvent)
+    })
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/pages/$projectName/$slug/$',
+      params: { projectName: 'lumina', slug: 'design-system', _splat: 'style.css' },
+      replace: true,
+    })
   })
 })
