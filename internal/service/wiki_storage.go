@@ -94,6 +94,13 @@ func (s *WikiStorageService) GetWikiPath(versionID int64) string {
 	return filepath.Join(s.GetVersionPath(versionID), "wiki")
 }
 
+// BasePath 返回存储根目录（REPOWIKI_STORAGE_PATH，默认 ./.lumina/repowiki）。
+//
+// 供调用方把 Get*Path 的产物转回 basePath 相对路径（如 SanitizePath 的入参契约）。
+func (s *WikiStorageService) BasePath() string {
+	return s.basePath
+}
+
 // GetFileScanPath 返回文件扫描结果路径
 //
 // → {versionPath}/file_scan.json
