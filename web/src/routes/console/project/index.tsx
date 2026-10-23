@@ -23,6 +23,7 @@ import { ConfirmDeleteDialog } from '#/components/confirm-delete-dialog'
 import { staggerContainer, staggerItem } from '@lumina/components/motion'
 import { PageHeader } from '#/components/page-header'
 import { formatDate } from '#/lib/format-date'
+import { buildWikiReaderUrl } from '#/lib/utils'
 import type { ProjectItem } from '#/lib/models/response/project'
 import type { RepoWikiConfigItem } from '#/lib/models/response/repowiki'
 import type { PreviewSessionItem } from '#/lib/models/response/preview'
@@ -571,10 +572,10 @@ function ProjectPage() {
                       onOpenWiki={(target) => {
                         const config = wikiConfigMap.get(target.id)
                         if (
-                          config?.selected_version_id ||
-                          config?.latest_version
+                          config &&
+                          (config.selected_version_id || config.latest_version)
                         ) {
-                          window.open(`/wiki/${target.name}`, '_blank')
+                          window.open(buildWikiReaderUrl(config.id), '_blank')
                         } else {
                           navigate({
                             to: '/console/project/$projectId/repowiki',

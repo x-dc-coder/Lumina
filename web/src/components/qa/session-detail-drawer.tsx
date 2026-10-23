@@ -102,7 +102,14 @@ export function SessionDetailDrawer({
           <Button
             type="button"
             className="rounded-none bg-lagoon text-foam hover:bg-lagoon-deep flex-1"
-            onClick={() => window.open('/interact', '_blank')}
+            onClick={() =>
+              window.open(
+                session?.hash
+                  ? `/interact?session=${encodeURIComponent(session.hash)}`
+                  : '/interact',
+                '_blank',
+              )
+            }
           >
             <span>进入问答交互大厅</span>
             <ExternalLink className="ml-1.5 size-3.5" />

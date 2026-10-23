@@ -53,6 +53,8 @@ export interface Session {
   owner: string
   onlineDevices: number
   questions: Question[]
+  projectId?: string
+  projectName?: string
 }
 
 export interface SupplementItem {

@@ -12,6 +12,7 @@ import type {
 interface UseQaSessionOptions {
   sessionHash: string | null
   onReject?: () => void
+  onSessionEnd?: () => void
 }
 
 // ── Hook ──
@@ -36,7 +37,11 @@ function parseJsonField<T = any>(field: any): T {
   return current
 }
 
-export function useQaSession({ sessionHash, onReject }: UseQaSessionOptions) {
+export function useQaSession({
+  sessionHash,
+  onReject,
+  onSessionEnd,
+}: UseQaSessionOptions) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [activeSupplement, setActiveSupplement] =
     useState<SupplementItem | null>(null)
@@ -324,7 +329,11 @@ export function useQaSession({ sessionHash, onReject }: UseQaSessionOptions) {
     onQuestionCancel: handleQuestionCancel,
     onSessionEnd: () => {
       setActiveSupplement(null)
-      onReject?.()
+      if (onSessionEnd) {
+        onSessionEnd()
+      } else {
+        onReject?.()
+      }
     },
     onReject,
   })

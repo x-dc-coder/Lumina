@@ -246,6 +246,14 @@ function QaPage() {
                     <span className="font-mono text-sea-ink bg-sand/60 px-1.5 py-0.2 border border-line">
                       Agent: {item.agent || '系统'}
                     </span>
+                    {item.project_name && (
+                      <>
+                        <span>•</span>
+                        <span className="font-mono text-sea-ink bg-sand/60 px-1.5 py-0.2 border border-line">
+                          项目: {item.project_name}
+                        </span>
+                      </>
+                    )}
                     <span>•</span>
                     <span>
                       {item.question_count} 个问题 (已答 {item.answered_count})

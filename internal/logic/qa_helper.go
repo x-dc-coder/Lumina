@@ -19,6 +19,7 @@ import (
 func toSessionResponse(session *entity.QaSession) qa.SessionResponse {
 	return qa.SessionResponse{
 		ID:            session.ID,
+		ProjectID:     session.ProjectID,
 		Hash:          session.Hash,
 		Title:         session.Title,
 		Agent:         session.Agent,

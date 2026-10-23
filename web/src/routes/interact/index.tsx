@@ -1,7 +1,10 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { useState, useEffect } from 'react'
+import { AlertCircle, ArrowRight } from 'lucide-react'
 
+import { Button } from '@lumina/components/ui/button'
 import type { Session } from '#/components/interact/types'
+import type { SessionItem } from '#/lib/models/response/qa-admin'
 import { DetailPanel } from '#/components/interact/detail-panel'
 import { groupHistoryDesc } from '#/components/interact/group-history'
 import { HistoryCard } from '#/components/interact/history-card'
@@ -44,6 +47,9 @@ export const Route = createFileRoute('/interact/')({
 function InteractPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string>('')
   const [sessionHash, setSessionHash] = useState<string>('')
+  const [sessionError, setSessionError] = useState<
+    'not_found' | 'expired' | null
+  >(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [splitterRatio, setSplitterRatio] = useState<number>(() => {
@@ -68,19 +74,68 @@ function InteractPage() {
 
   // URL 有 hash → 加载会话详情
   useEffect(() => {
-    if (!hashParam) return
+    if (!hashParam) {
+      setSessionHash('')
+      setSelectedSessionId('')
+      setSessionError(null)
+      return
+    }
 
-    setSessionHash(hashParam)
+    setSessionError(null)
     setIsLoading(true)
     ;(async () => {
       try {
         const res = await getSessionByHash(hashParam)
-        const sessionData = res.data?.items?.[0]
-        if (sessionData) {
+        const sessionData = (res.data?.items || [])[0] as
+          SessionItem | undefined
+        if (!sessionData) {
+          setSessionError('not_found')
+          setSessionHash('')
+          setSelectedSessionId('')
+        } else if (sessionData.status !== 'active') {
+          setSessionError('expired')
+          setSessionHash('')
+          setSelectedSessionId('')
+        } else {
+          const mappedSession: Session = {
+            id: sessionData.id,
+            hash: sessionData.hash,
+            title: sessionData.title,
+            agent: sessionData.agent,
+            type: sessionData.type,
+            status: sessionData.status,
+            onlineDevices: sessionData.online_devices,
+            owner: '',
+            questions: [],
+            updatedAt: sessionData.updated_at || sessionData.created_at,
+            expiresAt: sessionData.expires_at || '',
+            projectId:
+              sessionData.project_id && sessionData.project_id !== '0'
+                ? sessionData.project_id
+                : undefined,
+            projectName: sessionData.project_name || undefined,
+          }
+          setSessions((prev) => {
+            const idx = prev.findIndex((s) => s.id === mappedSession.id)
+            if (idx >= 0) {
+              const next = [...prev]
+              next[idx] = {
+                ...next[idx],
+                ...mappedSession,
+                questions: next[idx].questions,
+              }
+              return next
+            }
+            return [mappedSession, ...prev]
+          })
           setSelectedSessionId(sessionData.id)
+          setSessionHash(hashParam)
         }
       } catch (e) {
         console.error('Failed to load session info:', e)
+        setSessionError('not_found')
+        setSessionHash('')
+        setSelectedSessionId('')
       } finally {
         setIsLoading(false)
       }
@@ -99,7 +154,6 @@ function InteractPage() {
       try {
         const res = await getSessionList({
           status: 'active',
-          type: 'permanent',
           size: 50,
         })
         const apiSessions = res.data?.items || []
@@ -116,6 +170,11 @@ function InteractPage() {
           questions: [],
           updatedAt: item.updated_at || item.created_at,
           expiresAt: item.expires_at || '',
+          projectId:
+            item.project_id && item.project_id !== '0'
+              ? item.project_id
+              : undefined,
+          projectName: item.project_name || undefined,
         }))
 
         setSessions(mapped)
@@ -124,6 +183,20 @@ function InteractPage() {
       }
     })()
   }, [])
+
+  const handleSelectSession = (id: string) => {
+    setSelectedSessionId(id)
+    const target = sessions.find((s) => s.id === id)
+    if (target?.hash) {
+      setSessionError(null)
+      setSessionHash(target.hash)
+      navigate({
+        to: '/interact',
+        search: { session: target.hash },
+        replace: true,
+      })
+    }
+  }
 
   const {
     questions,
@@ -138,10 +211,15 @@ function InteractPage() {
     dismissSupplementLoading,
   } = useQaSession({
     sessionHash: sessionHash || null,
-    onReject: () => {
+    onSessionEnd: () => {
       setSessionHash('')
       setSelectedSessionId('')
       navigate({ to: '/interact/thank', replace: true })
+    },
+    onReject: () => {
+      setSessionHash('')
+      setSelectedSessionId('')
+      setSessionError((prev) => prev ?? 'expired')
     },
   })
 
@@ -151,7 +229,12 @@ function InteractPage() {
         const idx = prev.findIndex((s) => s.id === currentSession.id)
         if (idx >= 0) {
           const next = [...prev]
-          next[idx] = currentSession
+          next[idx] = {
+            ...next[idx],
+            ...currentSession,
+            projectId: currentSession.projectId || next[idx].projectId,
+            projectName: currentSession.projectName || next[idx].projectName,
+          }
           return next
         }
         return [...prev, currentSession]
@@ -179,7 +262,7 @@ function InteractPage() {
 
   // 当前激活的选项 ID（用于 OptionDetailLabel 的 isActive 状态）
   const activeOptionId = isViewingOption
-    ? activeSupplement?.target_id
+    ? activeSupplement.target_id
     : undefined
 
   const questionContent = isViewingOption
@@ -188,9 +271,9 @@ function InteractPage() {
   const questionContentType = isViewingOption
     ? (questionSupp?.content_type ?? 'markdown')
     : (activeDetailSupp?.content_type ?? 'markdown')
-  const optionContent = isViewingOption ? (activeSupplement?.content ?? '') : ''
+  const optionContent = isViewingOption ? activeSupplement.content : ''
   const optionContentType = isViewingOption
-    ? (activeSupplement?.content_type ?? 'markdown')
+    ? activeSupplement.content_type
     : 'markdown'
 
   const current = sessions.find((s) => s.id === selectedSessionId)
@@ -204,8 +287,94 @@ function InteractPage() {
     setProgress(computeSessionProgress(questions))
   }, [sessionHash, questions, setProgress])
 
+  if (sessionError) {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-center justify-center p-4">
+          <div className="w-full max-w-lg border border-line bg-surface p-8">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-amber-500/10">
+                <AlertCircle className="size-8 text-amber-500" aria-hidden />
+              </div>
+
+              <h1 className="text-xl font-bold tracking-tight text-sea-ink">
+                {sessionError === 'not_found'
+                  ? '会话不存在或链接已失效'
+                  : '会话已过期或已归档'}
+              </h1>
+              <p className="mt-2 text-sm leading-relaxed text-sea-ink-soft">
+                {sessionError === 'not_found'
+                  ? '未找到对应的问答会话，请检查链接是否正确，或返回交互大厅选择活跃会话。'
+                  : '该问答会话已结束或超过有效期，无法继续交互。请返回交互大厅选择其他活跃会话。'}
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setSessionError(null)
+                  navigate({ to: '/interact', replace: true })
+                }}
+                className="w-full bg-sea-ink text-foam hover:bg-lagoon-deep"
+              >
+                返回交互大厅
+                <ArrowRight className="ml-1.5 size-4" aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate({ to: '/console/qa', replace: true })}
+                className="w-full text-xs text-sea-ink-soft"
+              >
+                前往问答管理
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <SessionSidebarCompact
+          sessions={sessions}
+          selectedId={selectedSessionId}
+          onSelect={handleSelectSession}
+        />
+
+        <div className="xl:hidden">
+          <MobileSessionDrawer
+            sessions={sessions}
+            selectedId={selectedSessionId}
+            onSelect={handleSelectSession}
+          />
+        </div>
+      </div>
+    )
+  }
+
   if (!isConnected) {
-    return <LobbyView sessions={sessions} />
+    return (
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {isLoading ? (
+          <div className="flex min-w-0 flex-1 items-center justify-center p-4">
+            <LoadingState text="正在准备会话…" />
+          </div>
+        ) : (
+          <LobbyView sessions={sessions} />
+        )}
+
+        <SessionSidebarCompact
+          sessions={sessions}
+          selectedId={selectedSessionId}
+          onSelect={handleSelectSession}
+        />
+
+        <div className="xl:hidden">
+          <MobileSessionDrawer
+            sessions={sessions}
+            selectedId={selectedSessionId}
+            onSelect={handleSelectSession}
+          />
+        </div>
+      </div>
+    )
   }
 
   const questionPanelNode = (
@@ -267,17 +436,13 @@ function InteractPage() {
             >
               <DetailPanel
                 visible={hasDetailContent}
-                activeOption={
-                  activeDetailSupp
-                    ? { label: activeDetailSupp.content_type }
-                    : null
-                }
+                activeOption={{ label: activeDetailSupp.content_type }}
                 isMotionDemo={false}
                 questionContent={questionContent}
                 questionContentType={questionContentType}
                 optionContent={optionContent}
                 optionContentType={optionContentType}
-                optionId={activeDetailSupp?.id ?? ''}
+                optionId={activeDetailSupp.id}
                 onBack={() => backToQuestionDetail()}
               />
             </SplitterPanel>
@@ -293,14 +458,14 @@ function InteractPage() {
       <SessionSidebarCompact
         sessions={sessions}
         selectedId={selectedSessionId}
-        onSelect={setSelectedSessionId}
+        onSelect={handleSelectSession}
       />
 
       <div className="xl:hidden">
         <MobileSessionDrawer
           sessions={sessions}
           selectedId={selectedSessionId}
-          onSelect={setSelectedSessionId}
+          onSelect={handleSelectSession}
         />
       </div>
     </div>

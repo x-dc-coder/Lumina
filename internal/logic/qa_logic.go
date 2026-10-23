@@ -26,6 +26,7 @@ type qaRepo struct {
 	session       *repository.QaSessionRepo
 	question      *repository.QaQuestionRepo
 	supplement    *repository.QaSupplementRepo
+	project       *repository.ProjectRepo
 	info          *repository.InfoRepo
 	retryCache    *cache.QaRetryCache
 	downloadToken *service.DownloadTokenService
@@ -66,6 +67,7 @@ func NewQaLogic(ctx context.Context) *QaLogic {
 			session:       repository.NewQaSessionRepo(db, rdb),
 			question:      repository.NewQaQuestionRepo(db),
 			supplement:    repository.NewQaSupplementRepo(db),
+			project:       repository.NewProjectRepo(db, rdb),
 			info:          repository.NewInfoRepo(db),
 			retryCache:    &cache.QaRetryCache{Base: &cache.Base{RDB: rdb}},
 			downloadToken: service.NewDownloadTokenService(rdb),
@@ -73,6 +75,18 @@ func NewQaLogic(ctx context.Context) *QaLogic {
 		},
 		queue: qaQueue.GetAnswerQueue(),
 	}
+}
+
+// resolveProjectName 根据项目 ID 查询项目名称（查询失败或未绑定时返回空字符串）
+func (l *QaLogic) resolveProjectName(ctx context.Context, projectID xSnowflake.SnowflakeID) string {
+	if l.repo.project == nil || projectID.IsZero() {
+		return ""
+	}
+	project, xErr := l.repo.project.GetByID(ctx, projectID)
+	if xErr != nil || project == nil {
+		return ""
+	}
+	return project.Name
 }
 
 // ─── Management API Methods ─────────────────────────────────────────────
@@ -104,11 +118,20 @@ func (l *QaLogic) ListSessions(ctx context.Context, req *qa.ListSessionRequest) 
 	}
 
 	// 映射响应
+	projectNames := make(map[xSnowflake.SnowflakeID]string)
 	items := make([]qa.SessionResponse, 0, len(sessions))
 	for _, s := range sessions {
 		resp := toSessionResponse(s)
 		resp.QuestionCount = questionTotal[s.ID.Int64()]
 		resp.AnsweredCount = answeredTotal[s.ID.Int64()]
+		if !s.ProjectID.IsZero() {
+			name, ok := projectNames[s.ProjectID]
+			if !ok {
+				name = l.resolveProjectName(ctx, s.ProjectID)
+				projectNames[s.ProjectID] = name
+			}
+			resp.ProjectName = name
+		}
 		items = append(items, resp)
 	}
 
@@ -188,6 +211,8 @@ func (l *QaLogic) GetSessionDetail(ctx context.Context, id string) (*qa.SessionD
 
 	return &qa.SessionDetailResponse{
 		ID:            session.ID,
+		ProjectID:     session.ProjectID,
+		ProjectName:   l.resolveProjectName(ctx, session.ProjectID),
 		Hash:          session.Hash,
 		Title:         session.Title,
 		Agent:         session.Agent,
