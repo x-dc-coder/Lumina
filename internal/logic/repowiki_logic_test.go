@@ -2,8 +2,10 @@ package logic
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -668,5 +670,64 @@ func TestRepoWikiLogic_KeepLatestVersions_ConfigNotFound(t *testing.T) {
 	}
 	if keptID != nil {
 		t.Errorf("expected nil keptVersionID, got %d", keptID.Int64())
+	}
+}
+
+// TestRepoWikiLogic_QueryWiki_RelativeStoragePath 回归测试：REPOWIKI_STORAGE_PATH 为相对路径时，
+// repoWiki_query 不得把存储根二次拼接。历史 bug：readWikiPage 把已含 basePath 的 GetWikiPath
+// 产物再传给按「basePath 相对路径」契约工作的 SanitizePath，恒以 {basePath}/{basePath}/versions/...
+// 读文件，MCP repoWiki_query 对任何页面都报 no such file or directory。
+func TestRepoWikiLogic_QueryWiki_RelativeStoragePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+	t.Setenv("REPOWIKI_STORAGE_PATH", "./.lumina/repowiki")
+
+	// 与 setupTestRepoWikiLogic 相同的装配；存储服务必须在相对路径 env 生效后构造，
+	// 故此处不复用该 helper（它会把 env 固定为绝对临时目录）
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	createTestTables(t, db)
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	l := &RepoWikiLogic{
+		logic: logic{
+			log: xLog.WithName(xLog.NamedLOGC, "RepoWikiLogicTest"),
+		},
+		repo: repowikiRepo{
+			config:       repository.NewRepoWikiConfigRepo(db, rdb),
+			version:      repository.NewWikiVersionRepo(db, rdb),
+			webhookEvent: repository.NewWebhookEventRepo(db, rdb),
+		},
+		svc: repowikiSvc{
+			storage: service.NewWikiStorageService(),
+		},
+		semaphore: make(chan struct{}, 1),
+	}
+
+	_, versionIDs := seedConfigAndVersions(t, db, []string{"completed"})
+	vid := versionIDs[0]
+
+	wikiDir := filepath.Join(tmpDir, ".lumina", "repowiki", "versions", fmt.Sprintf("%d", vid.Int64()), "wiki")
+	if err := os.MkdirAll(wikiDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	pageContent := "---\ntitle: 项目概览\n---\n\n# 项目概览\n\n正文内容\n"
+	if err := os.WriteFile(filepath.Join(wikiDir, "overview.mdx"), []byte(pageContent), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	content, xErr := l.QueryWiki(context.Background(), vid.Int64(), "overview", "")
+	if xErr != nil {
+		t.Fatalf("QueryWiki failed: %v", xErr)
+	}
+	if !strings.Contains(content, "正文内容") {
+		t.Fatalf("unexpected content: %q", content)
 	}
 }

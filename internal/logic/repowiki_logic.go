@@ -872,7 +872,15 @@ func (l *RepoWikiLogic) readWikiPage(ctx context.Context, wikiPath, page string)
 			xError.ErrMessage("无效的页面路径: "+page), false, nil)
 	}
 
-	safePath, pErr := l.svc.storage.SanitizePath(wikiPath + "/" + page)
+	// SanitizePath 的契约是接收 basePath 相对路径；wikiPath 已含 basePath 前缀，
+	// 直接传入会被二次拼接为 {basePath}/{basePath}/...（历史 bug，MCP repoWiki_query 因此读不到任何页面）。
+	relWikiPath, rErr := filepath.Rel(l.svc.storage.BasePath(), wikiPath)
+	if rErr != nil {
+		return "", xError.NewError(ctx, xError.BadRequest,
+			xError.ErrMessage("无效的页面路径: "+page), false, rErr)
+	}
+
+	safePath, pErr := l.svc.storage.SanitizePath(filepath.Join(relWikiPath, page))
 	if pErr != nil {
 		return "", xError.NewError(ctx, xError.BadRequest,
 			xError.ErrMessage("无效的页面路径: "+page), false, pErr)
