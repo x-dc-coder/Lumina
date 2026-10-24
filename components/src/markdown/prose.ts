@@ -13,7 +13,7 @@
  */
 
 const baseCode =
-  "[&_code]:rounded [&_code]:bg-lagoon/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:text-lagoon-deep [&_code]:break-all";
+  "[&_code]:rounded [&_code]:bg-lagoon/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-xs [&_code]:font-mono [&_code]:text-lagoon-deep [&_code]:break-words";
 const basePre =
   "[&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-white [&_pre]:p-3 [&_pre]:text-xs [&_pre]:leading-relaxed [&_pre]:font-mono [&_pre]:text-gray-800 [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-inherit";
 const baseLink = "[&_a]:text-lagoon-deep [&_a]:underline [&_a]:break-all";
@@ -46,7 +46,7 @@ ${baseLink}
 [&_p]:text-base [&_p]:leading-relaxed [&_p]:text-sea-ink [&_p]:break-words [&_p]:[overflow-wrap:anywhere]
 [&_strong]:text-sea-ink [&_strong]:font-semibold
 [&_blockquote]:border-l-lagoon [&_blockquote]:bg-lagoon/5 [&_blockquote]:rounded-r-lg [&_blockquote]:px-4 [&_blockquote]:py-2 [&_blockquote]:text-base [&_blockquote]:text-sea-ink-soft
-[&_code]:rounded [&_code]:bg-lagoon/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-sm [&_code]:font-mono [&_code]:text-lagoon-deep [&_code]:break-all
+[&_code]:rounded [&_code]:bg-lagoon/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-sm [&_code]:font-mono [&_code]:text-lagoon-deep [&_code]:break-words
 [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-white [&_pre]:p-4 [&_pre]:text-sm [&_pre]:leading-relaxed [&_pre]:font-mono [&_pre]:text-gray-800 [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-inherit
 [&_table]:w-full [&_table]:text-sm
 [&_th]:bg-foam [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-sea-ink [&_th]:font-semibold
