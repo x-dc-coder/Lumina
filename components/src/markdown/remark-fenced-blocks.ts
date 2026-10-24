@@ -14,6 +14,9 @@
  * Supported types: callout, card, steps, step
  * Nesting: :::steps can contain multiple :::step blocks.
  * Unclosed fences are left as plain text (no error).
+ * Adjacency: fences may be written without blank lines around the content
+ * (markdown merges adjacent lines into one paragraph); such paragraphs are
+ * split back into standalone fence paragraphs before matching.
  */
 
 interface MdastNode {
@@ -97,16 +100,81 @@ function collectFencedBlock(
   return null
 }
 
+/** 开栏行与内容同段：首个 text 以 `:::type{props}` + 换行开头（markdown 相邻行合并所致） */
+const MERGED_OPENING_FENCE = /^(:::\w+(?:\{[^}]*\})?)[ \t]*\r?\n/
+/** 关栏行与内容同段：末个 text 以换行 + `:::` 结尾 */
+const MERGED_CLOSING_FENCE = /\r?\n[ \t]*:::[ \t]*$/
+
+/**
+ * 拆分「围栏与内容同段」的段落。
+ *
+ * markdown 会把相邻行合并为同一段落，当开栏行后无空行直接跟内容（或关栏行
+ * 紧跟内容行）时，围栏不再是独立段落，isOpeningFence / isClosingFence 无法识别，
+ * 整段会按纯文本渲染。此处把首行开栏、末行关栏从段落中拆出还原为独立围栏段落，
+ * 交由原有识别逻辑处理；其余场景原样返回。
+ */
+function splitFenceParagraph(node: MdastNode): MdastNode[] {
+  if (node.type !== 'paragraph') return [node]
+  const parent = node as MdastParent
+  if (parent.children.length === 0) return [node]
+
+  const children = [...parent.children]
+  let opening: MdastNode | null = null
+  let closing: MdastNode | null = null
+
+  const first = children[0]
+  if (first.type === 'text') {
+    const firstText = first as unknown as { value: string }
+    const openMatch = firstText.value.match(MERGED_OPENING_FENCE)
+    if (openMatch) {
+      opening = {
+        type: 'paragraph',
+        children: [{ type: 'text', value: openMatch[1] }],
+      }
+      const rest = firstText.value.slice(openMatch[0].length)
+      if (rest) firstText.value = rest
+      else children.shift()
+    }
+  }
+
+  if (children.length > 0) {
+    const last = children[children.length - 1]
+    if (last.type === 'text') {
+      const lastText = last as unknown as { value: string }
+      const closeMatch = lastText.value.match(MERGED_CLOSING_FENCE)
+      if (closeMatch) {
+        const content = lastText.value.slice(0, closeMatch.index)
+        if (content) lastText.value = content
+        else children.pop()
+        closing = {
+          type: 'paragraph',
+          children: [{ type: 'text', value: ':::' }],
+        }
+      }
+    }
+  }
+
+  if (!opening && !closing) return [node]
+  if (opening && closing) return [opening, paragraph(children), closing]
+  if (opening) return [opening, paragraph(children)]
+  return [paragraph(children), closing as MdastNode]
+}
+
+function paragraph(children: MdastNode[]): MdastNode {
+  return { type: 'paragraph', children }
+}
+
 function processChildren(children: MdastNode[]): MdastNode[] {
   const result: MdastNode[] = []
   let i = 0
+  const nodes = children.flatMap(splitFenceParagraph)
 
-  while (i < children.length) {
-    const node = children[i]
+  while (i < nodes.length) {
+    const node = nodes[i]
 
     if (isOpeningFence(node)) {
       const { type, props } = parseOpeningFence(node)
-      const blockResult = collectFencedBlock(children, i + 1)
+      const blockResult = collectFencedBlock(nodes, i + 1)
 
       if (blockResult) {
         const { contentNodes, endIndex } = blockResult
