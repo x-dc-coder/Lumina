@@ -16,8 +16,23 @@
  * Unclosed fences are left as plain text (no error).
  * Adjacency: fences may be written without blank lines around the content
  * (markdown merges adjacent lines into one paragraph); such paragraphs are
- * split back into standalone fence paragraphs before matching.
+ * split by line into standalone fence paragraphs before matching.
  */
+
+export const SUPPORTED_FENCE_TYPES = ['callout', 'card', 'steps', 'step'] as const
+export type SupportedFenceType = (typeof SUPPORTED_FENCE_TYPES)[number]
+
+const SUPPORTED_FENCE_SET = new Set<string>(SUPPORTED_FENCE_TYPES)
+
+/**
+ * 统一严格开栏正则：仅匹配白名单中的合法组件名，支持可选属性语法。
+ * 格式示例：`:::callout` 或 `:::callout{type="info" title="说明"}`。
+ * 非白名单或格式不合法（如未闭合的花括号）不作为开栏，回退为普通文本。
+ */
+const OPENING_FENCE_REGEX = /^:::(callout|card|steps|step)(?:\{([^}]*)\})?\s*$/
+
+/** 统一关栏正则：仅由 `:::` 及周围空白字符构成。 */
+const CLOSING_FENCE_REGEX = /^:::\s*$/
 
 interface MdastNode {
   type: string
@@ -28,35 +43,40 @@ interface MdastParent extends MdastNode {
   children: MdastNode[]
 }
 
-function isOpeningFence(node: MdastNode): boolean {
+export function isOpeningFence(node: MdastNode): boolean {
   if (node.type !== 'paragraph') return false
   const parent = node as MdastParent
-  if (parent.children.length === 0) return false
-  if (parent.children.length > 1) return false
+  if (parent.children.length !== 1) return false
   const firstChild = parent.children[0]
   if (firstChild.type !== 'text') return false
   const value = (firstChild as unknown as { value: string }).value
-  return /^:::\w+/.test(value)
+  return OPENING_FENCE_REGEX.test(value.trim())
 }
 
-function parseOpeningFence(node: MdastNode): { type: string; props: string } {
+export function parseOpeningFence(
+  node: MdastNode,
+): { type: SupportedFenceType; props: string } | null {
+  if (node.type !== 'paragraph') return null
   const parent = node as MdastParent
-  const firstChild = parent.children[0] as unknown as { value: string }
-  const text = firstChild.value
-  const match = text.match(/^:::(\w+)(?:\{([^}]*)\})?\s*$/)
-  if (!match) return { type: '', props: '' }
-  return { type: match[1], props: match[2] || '' }
+  if (parent.children.length !== 1) return null
+  const firstChild = parent.children[0]
+  if (firstChild.type !== 'text') return null
+  const text = (firstChild as unknown as { value: string }).value.trim()
+  const match = text.match(OPENING_FENCE_REGEX)
+  if (!match) return null
+  const type = match[1] as SupportedFenceType
+  if (!SUPPORTED_FENCE_SET.has(type)) return null
+  return { type, props: match[2] || '' }
 }
 
-function isClosingFence(node: MdastNode): boolean {
+export function isClosingFence(node: MdastNode): boolean {
   if (node.type !== 'paragraph') return false
   const parent = node as MdastParent
-  if (parent.children.length === 0) return false
-  if (parent.children.length > 1) return false
+  if (parent.children.length !== 1) return false
   const firstChild = parent.children[0]
   if (firstChild.type !== 'text') return false
   const value = (firstChild as unknown as { value: string }).value
-  return /^:::\s*$/.test(value)
+  return CLOSING_FENCE_REGEX.test(value.trim())
 }
 
 function parseProps(propsStr: string): Record<string, string> {
@@ -96,90 +116,189 @@ function collectFencedBlock(
     }
   }
 
-  // No closing found
+  // 未找到对应的关栏
   return null
 }
 
-/** 开栏行与内容同段：首个 text 以 `:::type{props}` + 换行开头（markdown 相邻行合并所致） */
-const MERGED_OPENING_FENCE = /^(:::\w+(?:\{[^}]*\})?)[ \t]*\r?\n/
-/** 关栏行与内容同段：末个 text 以换行 + `:::` 结尾 */
-const MERGED_CLOSING_FENCE = /\r?\n[ \t]*:::[ \t]*$/
-
 /**
- * 拆分「围栏与内容同段」的段落。
+ * 将「围栏行与内容同段」的段落按行切分归一化。
  *
- * markdown 会把相邻行合并为同一段落，当开栏行后无空行直接跟内容（或关栏行
- * 紧跟内容行）时，围栏不再是独立段落，isOpeningFence / isClosingFence 无法识别，
- * 整段会按纯文本渲染。此处把首行开栏、末行关栏从段落中拆出还原为独立围栏段落，
- * 交由原有识别逻辑处理；其余场景原样返回。
+ * Markdown 解析器（remark-parse）会将相邻行合并为一个段落。
+ * 当 `:::callout` / `:::steps` 等开栏行或 `:::` 关栏行前后没有空行时，
+ * 围栏行会混在段落 AST 节点的文本流中。
+ *
+ * 本函数逐行切分，将开栏行与关栏行剥离为独立的单行段落节点；
+ * 连续的普通内容行保留换行符重新组合为普通段落。
+ * 所有产出均为纯净的新节点，杜绝任何对原始 AST 节点属性的原地变异（in-place mutation）。
  */
-function splitFenceParagraph(node: MdastNode): MdastNode[] {
+export function splitFenceParagraph(node: MdastNode): MdastNode[] {
   if (node.type !== 'paragraph') return [node]
   const parent = node as MdastParent
   if (parent.children.length === 0) return [node]
 
-  const children = [...parent.children]
-  let opening: MdastNode | null = null
-  let closing: MdastNode | null = null
+  // 快速路径：若不含围栏特征字符串，无需按行切分
+  let containsFenceSignal = false
+  for (const child of parent.children) {
+    if (child.type === 'text' && (child as unknown as { value: string }).value.includes(':::')) {
+      containsFenceSignal = true
+      break
+    }
+  }
+  if (!containsFenceSignal) return [node]
 
-  const first = children[0]
-  if (first.type === 'text') {
-    const firstText = first as unknown as { value: string }
-    const openMatch = firstText.value.match(MERGED_OPENING_FENCE)
-    if (openMatch) {
-      opening = {
-        type: 'paragraph',
-        children: [{ type: 'text', value: openMatch[1] }],
+  // 按换行符切分为行
+  interface LineInfo {
+    nodes: MdastNode[]
+    isPureText: boolean
+    textValue: string
+  }
+
+  const lines: LineInfo[] = []
+  let curNodes: MdastNode[] = []
+  let curText = ''
+  let curPureText = true
+
+  for (const child of parent.children) {
+    if (child.type === 'text') {
+      const val = (child as unknown as { value: string }).value
+      const parts = val.split(/\r?\n/)
+      for (let p = 0; p < parts.length; p++) {
+        const part = parts[p]
+        if (p > 0) {
+          lines.push({
+            nodes: curNodes,
+            isPureText: curPureText,
+            textValue: curText,
+          })
+          curNodes = []
+          curText = ''
+          curPureText = true
+        }
+        if (part.length > 0) {
+          curNodes.push({ type: 'text', value: part })
+          curText += part
+        }
       }
-      const rest = firstText.value.slice(openMatch[0].length)
-      if (rest) firstText.value = rest
-      else children.shift()
+    } else {
+      curPureText = false
+      curNodes.push({ ...child })
     }
   }
 
-  if (children.length > 0) {
-    const last = children[children.length - 1]
-    if (last.type === 'text') {
-      const lastText = last as unknown as { value: string }
-      const closeMatch = lastText.value.match(MERGED_CLOSING_FENCE)
-      if (closeMatch) {
-        const content = lastText.value.slice(0, closeMatch.index)
-        if (content) lastText.value = content
-        else children.pop()
-        closing = {
-          type: 'paragraph',
-          children: [{ type: 'text', value: ':::' }],
+  lines.push({
+    nodes: curNodes,
+    isPureText: curPureText,
+    textValue: curText,
+  })
+
+  const result: MdastNode[] = []
+  let pendingContentNodes: MdastNode[] = []
+
+  function flushPending() {
+    if (pendingContentNodes.length > 0) {
+      result.push({
+        type: 'paragraph',
+        children: pendingContentNodes,
+      })
+      pendingContentNodes = []
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.textValue.trim()
+    const isOpening = line.isPureText && OPENING_FENCE_REGEX.test(trimmed)
+    const isClosing = line.isPureText && CLOSING_FENCE_REGEX.test(trimmed)
+
+    if (isOpening) {
+      flushPending()
+      result.push({
+        type: 'paragraph',
+        children: [{ type: 'text', value: trimmed }],
+      })
+    } else if (isClosing) {
+      flushPending()
+      result.push({
+        type: 'paragraph',
+        children: [{ type: 'text', value: ':::' }],
+      })
+    } else {
+      if (line.nodes.length > 0) {
+        if (pendingContentNodes.length > 0) {
+          pendingContentNodes.push({ type: 'text', value: '\n' })
+        }
+        pendingContentNodes.push(...line.nodes)
+      }
+    }
+  }
+
+  flushPending()
+  return result.length > 0 ? result : [node]
+}
+
+/**
+ * 提取列表（list）或引用（blockquote）末尾由 CommonMark 惰性延续（lazy continuation）
+ * 误吞入的关栏标记 `:::`，将其从容器末尾移除并作为独立段落返回。
+ */
+function extractTrailingLazyClosingFence(node: MdastNode): MdastNode | null {
+  if (node.type === 'blockquote') {
+    const parent = node as MdastParent
+    if (parent.children.length > 0) {
+      const last = parent.children[parent.children.length - 1]
+      if (isClosingFence(last)) {
+        parent.children.pop()
+        return last
+      }
+    }
+  } else if (node.type === 'list') {
+    const listParent = node as MdastParent
+    if (listParent.children.length > 0) {
+      const lastItem = listParent.children[listParent.children.length - 1] as MdastParent
+      if (lastItem.children.length > 0) {
+        const lastChild = lastItem.children[lastItem.children.length - 1]
+        if (isClosingFence(lastChild)) {
+          lastItem.children.pop()
+          return lastChild
         }
       }
     }
   }
-
-  if (!opening && !closing) return [node]
-  if (opening && closing) return [opening, paragraph(children), closing]
-  if (opening) return [opening, paragraph(children)]
-  return [paragraph(children), closing as MdastNode]
-}
-
-function paragraph(children: MdastNode[]): MdastNode {
-  return { type: 'paragraph', children }
+  return null
 }
 
 function processChildren(children: MdastNode[]): MdastNode[] {
+  // 第一步：先对所有段落执行按行切分归一化
+  const splitNodes = children.flatMap(splitFenceParagraph)
+
+  // 第二步：处理列表/引用内部各层级并提升末尾惰性延续关栏
+  const normalizedNodes: MdastNode[] = []
+  for (const node of splitNodes) {
+    if ('children' in node && Array.isArray((node as MdastParent).children)) {
+      const parent = node as MdastParent
+      parent.children = processChildren(parent.children)
+      const trailingClosing = extractTrailingLazyClosingFence(node)
+      normalizedNodes.push(node)
+      if (trailingClosing) {
+        normalizedNodes.push(trailingClosing)
+      }
+    } else {
+      normalizedNodes.push(node)
+    }
+  }
+
+  // 第三步：收集并递归解析围栏块
   const result: MdastNode[] = []
   let i = 0
-  const nodes = children.flatMap(splitFenceParagraph)
 
-  while (i < nodes.length) {
-    const node = nodes[i]
+  while (i < normalizedNodes.length) {
+    const node = normalizedNodes[i]
 
-    if (isOpeningFence(node)) {
-      const { type, props } = parseOpeningFence(node)
-      const blockResult = collectFencedBlock(nodes, i + 1)
+    const opening = parseOpeningFence(node)
+    if (opening) {
+      const { type, props } = opening
+      const blockResult = collectFencedBlock(normalizedNodes, i + 1)
 
       if (blockResult) {
         const { contentNodes, endIndex } = blockResult
-
-        // Recursively process content nodes
         const processedContent = processChildren(contentNodes)
 
         const customNode: MdastNode = {
@@ -195,12 +314,6 @@ function processChildren(children: MdastNode[]): MdastNode[] {
         i = endIndex + 1
         continue
       }
-    }
-
-    // For non-fence nodes, recursively process their children
-    if ('children' in node && Array.isArray((node as MdastParent).children)) {
-      const parent = node as MdastParent
-      parent.children = processChildren(parent.children)
     }
 
     result.push(node)

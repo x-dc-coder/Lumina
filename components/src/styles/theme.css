@@ -18,6 +18,18 @@
   margin-inline: auto;
 }
 
+/* 修复带 \tag{...} 编号的公式在 flex 下宽度收缩导致公式内容与右侧编号重叠：
+   当存在 .tag 时，.katex 撑满容器宽度并随超宽内容自适应，同时在右侧为编号预留独立间距 */
+.katex-display:has(.tag) > .katex {
+  min-width: 100%;
+  width: max-content;
+  position: relative;
+}
+
+.katex-display:has(.tag) > .katex > .katex-html {
+  padding-right: 4rem;
+}
+
 /* ─── 微明色盘 · 烛照幽微 ─────────────────────────────── */
 /* 以幽暗为底，燃一寸静烛。不求烈日灼目，只愿微光渡桥。 */
 
