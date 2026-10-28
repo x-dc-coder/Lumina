@@ -1,6 +1,6 @@
 /* ─── 微明色盘 · 共享主题 ───────────────────────── */
 
-@import 'katex/dist/katex.min.css';
+@import "katex/dist/katex.min.css";
 
 /* ─── KaTeX · 长公式块内横向滚动 ─────────────────────── */
 /* katex.min.css 将 .katex-display > .katex 设为 nowrap，超宽公式会直接溢出
@@ -16,18 +16,33 @@
 
 .katex-display > .katex {
   margin-inline: auto;
+  flex-shrink: 0;
 }
 
 /* 修复带 \tag{...} 编号的公式在 flex 下宽度收缩导致公式内容与右侧编号重叠：
-   当存在 .tag 时，.katex 撑满容器宽度并随超宽内容自适应，同时在右侧为编号预留独立间距 */
+   将带编号公式的 .katex-html 重构为基于 flex 的流式排版，让 .tag 脱离绝对定位参与实际宽度计算，
+   移除固定的 padding-right: 4rem，完美支持超长编号自适应撑开且不偏心短公式。 */
 .katex-display:has(.tag) > .katex {
-  min-width: 100%;
-  width: max-content;
+  width: 100%;
   position: relative;
 }
 
 .katex-display:has(.tag) > .katex > .katex-html {
-  padding-right: 4rem;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.katex-display:has(.tag) > .katex > .katex-html::before {
+  content: "";
+  margin-left: auto;
+}
+
+.katex-display:has(.tag) > .katex > .katex-html > .tag {
+  position: relative;
+  margin-left: auto;
+  padding-left: 1.5rem;
+  flex-shrink: 0;
 }
 
 /* ─── 微明色盘 · 烛照幽微 ─────────────────────────────── */
@@ -157,7 +172,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
 
   /* ── 微明色盘 · @theme 映射（自动生成语义工具类） ── */
   /* 意象层 */
@@ -236,7 +251,7 @@
 
 /* ── 排版工具类（全局约定，非组件样式） ── */
 .display-title {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: "Fraunces", Georgia, serif;
   text-wrap: balance;
 }
 
@@ -362,4 +377,3 @@
 :root {
   --splitter-hit-size: 14px;
 }
-

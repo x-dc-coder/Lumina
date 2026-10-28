@@ -23,4 +23,18 @@ describe("prose styles overflow and word-break rules", () => {
     expect(proseArticle).not.toContain("[&_code]:break-all");
     expect(proseArticle).toContain("[&_pre]:overflow-x-auto");
   });
+
+  it("proseArticle preserves core theme variables to prevent dark mode contrast regression", () => {
+    expect(proseArticle).toContain("[&_table]:w-full");
+    expect(proseArticle).toContain("[&_table]:text-sm");
+    expect(proseArticle).toContain("[&_th]:bg-foam");
+    expect(proseArticle).toContain("[&_th]:text-sea-ink");
+    expect(proseArticle).toContain("[&_td]:text-sea-ink-soft");
+    expect(proseArticle).toContain("[&_td]:border-line");
+    expect(proseArticle).toContain("[&_hr]:border-line");
+    expect(proseArticle).toContain("[&_ul]:text-sea-ink");
+    expect(proseArticle).toContain("[&_ol]:text-sea-ink");
+    expect(proseArticle).toContain("[&_li]:text-sea-ink");
+    expect(proseArticle).toContain("[&_em]:text-sea-ink-soft");
+  });
 });

@@ -6,20 +6,25 @@
  * 将水平滚动条推离表格底边。
  */
 
-import type { ComponentPropsWithoutRef } from 'react'
-import { cn } from '../lib/utils'
+import type { ComponentPropsWithoutRef } from "react";
+import { cn } from "../lib/utils";
+
+interface MarkdownTableProps extends ComponentPropsWithoutRef<"table"> {
+  node?: unknown;
+}
 
 export function MarkdownTable({
   children,
   className,
   style,
+  node: _node,
   ...rest
-}: ComponentPropsWithoutRef<'table'>) {
+}: MarkdownTableProps) {
   return (
-    <div className="my-6 w-full overflow-x-auto">
-      <table className={cn('my-0!', className)} style={style} {...rest}>
+    <div className="my-4 first:mt-0 last:mb-0 w-full overflow-x-auto">
+      <table className={cn("my-0!", className)} style={style} {...rest}>
         {children}
       </table>
     </div>
-  )
+  );
 }
