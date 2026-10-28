@@ -12,6 +12,30 @@
   overflow-y: hidden;
   padding-bottom: 0.6em;
   scrollbar-width: thin;
+  /* 滚动边缘渐隐阴影提示：当超长公式横向溢出时呈现柔和阴影，指示可水平滑动 */
+  background:
+    /* 两侧随内容滚动的背景遮罩，滚动到底部时遮住对应侧的阴影 */
+    linear-gradient(to right, var(--bg-base, #faf7f1) 30%, transparent),
+    linear-gradient(to left, var(--bg-base, #faf7f1) 30%, transparent) 100% 0,
+    /* 容器两端固定边缘的微弱内阴影 */
+    radial-gradient(
+        farthest-side at 0 50%,
+        var(--line, rgba(43, 32, 24, 0.12)),
+        transparent
+      ),
+    radial-gradient(
+        farthest-side at 100% 50%,
+        var(--line, rgba(43, 32, 24, 0.12)),
+        transparent
+      )
+      100% 0;
+  background-repeat: no-repeat;
+  background-size:
+    2.5rem 100%,
+    2.5rem 100%,
+    1rem 100%,
+    1rem 100%;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .katex-display > .katex {
@@ -43,6 +67,7 @@
   margin-left: auto;
   padding-left: 1.5rem;
   flex-shrink: 0;
+  align-self: center;
 }
 
 /* ─── 微明色盘 · 烛照幽微 ─────────────────────────────── */

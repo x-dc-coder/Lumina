@@ -224,4 +224,43 @@ describe("MarkdownLite 渲染", () => {
     const tag = container.querySelector(".tag");
     expect(tag).toBeTruthy();
   });
+
+  it("多行推导 aligned 环境带 tag 编号正常渲染，保持流式排版与垂直居中", async () => {
+    const raw = `$$
+\\begin{aligned}
+f(x) &= (x + 1)^2 \\\\
+     &= x^2 + 2x + 1
+\\end{aligned} \\tag{Eq.2}
+$$`;
+
+    const { container, findByText } = render(
+      <MarkdownLite>{raw}</MarkdownLite>,
+    );
+
+    const tagText = await findByText("Eq.2");
+    expect(tagText).toBeTruthy();
+    const tag = container.querySelector(".tag");
+    expect(tag).toBeTruthy();
+    const katexDisplay = container.querySelector(".katex-display");
+    expect(katexDisplay).toBeTruthy();
+  });
+
+  it("超复杂高维矩阵 pmatrix 块级公式正常渲染且不破坏页面版面", async () => {
+    const raw = `$$
+A = \\begin{pmatrix}
+a_{11} & a_{12} & a_{13} \\\\
+a_{21} & a_{22} & a_{23} \\\\
+a_{31} & a_{32} & a_{33}
+\\end{pmatrix}
+$$`;
+
+    const { container, findAllByText } = render(
+      <MarkdownLite>{raw}</MarkdownLite>,
+    );
+
+    const matrixCells = await findAllByText("a");
+    expect(matrixCells.length).toBeGreaterThan(0);
+    const katexDisplay = container.querySelector(".katex-display");
+    expect(katexDisplay).toBeTruthy();
+  });
 });
